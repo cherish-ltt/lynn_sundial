@@ -8,7 +8,6 @@ license = "MIT"
 readme = "README.md"
 repository = "https://github.com/cherish-ltt/lynn_sundial"
 description = "支持cron的异步并发定时任务管理器"
-categories = ["scheduler"]
 keywords = ["scheduler" , "cron-scheduler" , "wheel-scheduler"]
 
 [dependencies]
