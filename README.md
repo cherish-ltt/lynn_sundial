@@ -1,6 +1,6 @@
 ## Lynn_sundial
 
-[![Crates.io](https://img.shields.io/crates/v/lynn_sundial)](https://crates.io/crates/lynn_tcp)  [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cherish-ltt/lynn_tcp/blob/main/LICENSE) [![doc](https://docs.rs/axum/badge.svg)](https://docs.rs/lynn_sundial/latest/lynn_sundial/) [![Downloads](https://img.shields.io/crates/d/lynn_tcp.svg)](https://crates.io/crates/lynn_sundial)
+[![Crates.io](https://img.shields.io/crates/v/lynn_sundial)](https://crates.io/crates/lynn_tcp)  [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cherish-ltt/lynn_tcp/blob/main/LICENSE) [![doc](https://docs.rs/lynn_sundial/badge.svg)](https://docs.rs/lynn_sundial/latest/lynn_sundial/) [![Downloads](https://img.shields.io/crates/d/lynn_sundial.svg)](https://crates.io/crates/lynn_sundial)
 
 `Lynn_sundial` 是一个支持cron的异步并发定时任务管理器
 
@@ -78,7 +78,7 @@ async fn println_time() {
 
 ### 版本日志
 
-[version.md](https://github.com/cherish-ltt/lynn_tcp/blob/main/version.md)
+[version.md](https://github.com/cherish-ltt/lynn_sundial/blob/main/version.md)
 
 ### License
 
