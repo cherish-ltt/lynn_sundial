@@ -5,19 +5,13 @@ mod time_wheel;
 
 #[cfg(feature = "schedule")]
 use std::sync::Arc;
-use std::{
-    collections::VecDeque, default, error::Error, marker::PhantomData, pin::Pin, str::FromStr,
-    time::Duration,
-};
+use std::{marker::PhantomData, pin::Pin, str::FromStr};
 
-use chrono::{DateTime, Local, Utc};
+use chrono::Local;
 
 use crate::schedule::task::{ITaskHandler, Task};
 #[cfg(feature = "schedule")]
-use crate::schedule::{
-    reactor::TaskReactor,
-    time_wheel::{TierTimeWheel, TimeWheel},
-};
+use crate::schedule::{reactor::TaskReactor, time_wheel::TierTimeWheel};
 
 #[cfg(feature = "schedule")]
 pub enum RepeatModel {
@@ -48,6 +42,16 @@ impl Scheduler {
         }
     }
 
+    /// #### 异步阻塞等待定时器
+    /// 注意：定时器的内部reactor在new时已经启动，`wait_all`方法是用于阻塞主线程而额外提供的异步方法，你也可以在主线程使用类似`loop{}`来避免主线程提前结束（不推荐）
+    pub async fn wait_all(&mut self) {
+        let _ = self.task_reactor.wait_all().await;
+    }
+
+    /// #### 添加定时任务
+    /// 注意：
+    /// - 所有为RepeatModel::Repetition的同一定时任务（如：任务A），上一次任务运行（任务A.run）和下一次任务运行（任务A.run）是可以并行的
+    /// - 如需同一任务在上一次任务运行还未结束时，不允许下一次任务直接运行，请使用api：`push_sync_task`(还未支持)
     pub fn push_task(
         &mut self,
         cron: &str,
@@ -58,25 +62,14 @@ impl Scheduler {
         if let Some(next_time) = cron_schedule.upcoming(Local).next() {
             let now_time = Local::now();
             let time_delta = next_time.signed_duration_since(now_time);
-            let seconds = time_delta.num_seconds() as u64;
+            let milliseconds = time_delta.num_milliseconds();
             let task = Task::new(
                 cron_schedule,
                 Arc::new(Box::new(handle.to_system())),
                 repeat,
                 next_time,
             );
-            if seconds > 60 {
-                if seconds > 60 * 60 {
-                    // 小时级
-                    self.time_wheel.push_T_to_hour_time_wheel(task, seconds);
-                } else {
-                    // 分钟级
-                    self.time_wheel.push_T_to_minute_time_wheel(task, seconds);
-                }
-            } else {
-                // 秒级
-                self.time_wheel.push_T_to_second_time_wheel(task, seconds);
-            }
+            self.time_wheel.push_T_to_time_wheel(task, milliseconds);
         }
         Ok(())
     }

@@ -32,32 +32,54 @@ lynn_sundial = "1"
 ```
 
 ```rust
-use crate::schedule::*;
 use chrono::Local;
+use lynn_sundial::schedule_api::*;
 
 #[tokio::main]
 async fn main() {
     let mut scheduler = Scheduler::new();
-    let _ = scheduler.push_task("* * * * * ? ", println_time, RepeatModel::Repetition);
-    loop {}
+    let _ = scheduler.push_task(
+        "0/1 * * * * ?",
+        println_second_time,
+        RepeatModel::Repetition,
+    );
+    for _ in 0..5 {
+        let _ = scheduler.push_task(
+            "0 0/1 * * * ?",
+            println_minute_time,
+            RepeatModel::Repetition,
+        );
+    }
+    scheduler.wait_all().await
 }
 
-async fn println_time() {
+async fn println_second_time() {
     let now_time = Local::now();
-    println!("-> {}", now_time);
+    println!("second -> {}", now_time);
+}
+
+async fn println_minute_time() {
+    let now_time = Local::now();
+    println!("minute -> {}", now_time);
 }
 
 /*
--> 2025-07-16 08:18:21.736769200 +08:00
--> 2025-07-16 08:18:22.751395400 +08:00
--> 2025-07-16 08:18:23.761559300 +08:00
--> 2025-07-16 08:18:24.773367100 +08:00
--> 2025-07-16 08:18:25.786837400 +08:00
--> 2025-07-16 08:18:26.799391800 +08:00
--> 2025-07-16 08:18:27.812838100 +08:00
--> 2025-07-16 08:18:28.825843800 +08:00
--> 2025-07-16 08:18:29.836692700 +08:00
--> 2025-07-16 08:18:30.839692700 +08:00
+second -> 2025-08-14 00:17:55.068137600 +08:00
+second -> 2025-08-14 00:17:56.081903600 +08:00
+second -> 2025-08-14 00:17:57.092010100 +08:00
+second -> 2025-08-14 00:17:58.102547000 +08:00
+second -> 2025-08-14 00:17:59.128056200 +08:00
+second -> 2025-08-14 00:18:00.030976200 +08:00
+minute -> 2025-08-14 00:18:00.039900100 +08:00
+minute -> 2025-08-14 00:18:00.039911800 +08:00
+minute -> 2025-08-14 00:18:00.039935000 +08:00
+minute -> 2025-08-14 00:18:00.039948400 +08:00
+minute -> 2025-08-14 00:18:00.039972800 +08:00
+second -> 2025-08-14 00:18:01.039895500 +08:00
+second -> 2025-08-14 00:18:02.067087500 +08:00
+second -> 2025-08-14 00:18:03.077046300 +08:00
+second -> 2025-08-14 00:18:04.088021900 +08:00
+second -> 2025-08-14 00:18:05.099003300 +08:00
 ......
 */
 ```

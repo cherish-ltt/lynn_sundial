@@ -1,8 +1,8 @@
 [package]
 name = "lynn_sundial"
-version = "0.0.1-rc.1"
+version = "0.0.1-rc.2"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 authors = ["lynn_sundial Contributors"]
 license = "MIT"
 readme = "README.md"
@@ -13,7 +13,8 @@ keywords = ["scheduler" , "cron-scheduler" , "wheel-scheduler"]
 [dependencies]
 chrono = "=0.4.41"
 cron = "=0.15.0"
-tokio = { version = "=1.46.1", features = ["macros","net","sync","rt-multi-thread","time","io-util"] }
+crossbeam-deque = "=0.8.6"
+tokio = { version = "=1.47.1", features = ["macros","rt-multi-thread","time"] }
 
 [features]
 default=["schedule"]
