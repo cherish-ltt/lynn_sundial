@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
-use tokio::task::JoinHandle;
+use std::
+    sync::Arc
+;
 
 use crate::schedule::{
     reactor::{core_reactor::CoreReactor, task_reactor::TasksManager},
-    task::{Task, TaskPollTrait},
+    task::TaskPollTrait,
     time_wheel::TierTimeWheel,
 };
 
@@ -13,13 +13,24 @@ mod task_reactor;
 
 /// ## 任务中心
 pub(crate) struct TaskReactor {
-    core_join_handle: Option<JoinHandle<()>>,
+    core_reactor: CoreReactor,
+    task_manager: TasksManager,
 }
 
 impl TaskReactor {
     pub(crate) fn new() -> Self {
         Self {
-            core_join_handle: None,
+            core_reactor: CoreReactor::new(),
+            task_manager: TasksManager::new(),
+        }
+    }
+
+    pub(crate) async fn wait_all(&mut self) -> Result<(), tokio::task::JoinError> {
+        if let Some(handle) = self.core_reactor.core_join_handle.as_mut() {
+            //handle.
+            handle.await
+        } else {
+            Ok(())
         }
     }
 
@@ -27,15 +38,8 @@ impl TaskReactor {
     where
         T: TaskPollTrait + 'static,
     {
-        let core_join_handle = tokio::spawn(async move {
-            let time_wheel = time_wheel;
-            loop {
-                let handle_vec = time_wheel.tick().await;
-                for handle in handle_vec {
-                    handle.run().await;
-                }
-            }
-        });
-        self.core_join_handle = Some(core_join_handle);
+        self.task_manager.start();
+        self.core_reactor
+            .start(time_wheel, self.task_manager.get_global_queue());
     }
 }
