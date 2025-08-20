@@ -2,7 +2,10 @@ use std::{sync::Arc, time::Duration};
 
 use crossbeam_deque::{Injector, Steal, Stealer, Worker};
 
-use crate::schedule::{config::DEFAULT_TASK_POOL_SIZE, task::ITaskHandler};
+use crate::schedule::{
+    config::{DEFAULT_TASK_POOL_SIZE, DEFAULT_TICK_TIME},
+    task_actor::ITaskHandler,
+};
 
 pub(super) struct TasksManager {
     global_queue: Arc<Injector<Arc<Box<dyn ITaskHandler>>>>,
@@ -41,7 +44,7 @@ impl TasksManager {
                     if let Some(task) = get_task(&local_queue, &global_queue, &stealers_arc) {
                         task.run().await;
                     } else {
-                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        tokio::time::sleep(Duration::from_millis(DEFAULT_TICK_TIME)).await;
                     }
                 }
             });

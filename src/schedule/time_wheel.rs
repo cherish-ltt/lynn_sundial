@@ -11,30 +11,24 @@ use crate::schedule::{
         DEFAULT_HOUR_TIME_WHEEL_SETTING, DEFAULT_MILLISECOND_TIME_WHEEL_SETTING,
         DEFAULT_MINUTE_TIME_WHEEL_SETTING, DEFAULT_SECOND_TIME_WHEEL_SETTING,
     },
-    task_actor::{ITaskHandler, TaskPollTrait},
+    task_actor::{ITaskHandler, Task, TaskPollTrait, TaskSignal},
 };
 
 /// ## 多层时间轮
 /// 分4层，分别是：毫秒级、秒级、分钟级、小时级
 /// 时间轮每25毫秒tick一次
-pub(crate) struct TierTimeWheel<T>
-where
-    T: TaskPollTrait + 'static,
-{
-    millisecond_time_wheel: *mut TimeWheel<T>,
-    second_time_wheel: *mut TimeWheel<T>,
-    minute_time_wheel: *mut TimeWheel<T>,
-    hour_time_wheel: *mut TimeWheel<T>,
+pub(crate) struct TierTimeWheel {
+    millisecond_time_wheel: *mut TimeWheel,
+    second_time_wheel: *mut TimeWheel,
+    minute_time_wheel: *mut TimeWheel,
+    hour_time_wheel: *mut TimeWheel,
     mutex: Mutex<()>,
 }
 
-unsafe impl<T> Send for TierTimeWheel<T> where T: TaskPollTrait + 'static {}
-unsafe impl<T> Sync for TierTimeWheel<T> where T: TaskPollTrait + 'static {}
+unsafe impl Send for TierTimeWheel {}
+unsafe impl Sync for TierTimeWheel {}
 
-impl<T> TierTimeWheel<T>
-where
-    T: TaskPollTrait,
-{
+impl TierTimeWheel {
     pub(crate) fn new() -> Self {
         Self {
             millisecond_time_wheel: Box::into_raw(Box::new(TimeWheel::new(
@@ -57,10 +51,9 @@ where
         }
     }
 
-    pub(crate) fn push_T_to_time_wheel(&self, task: T, milliseconds: i64) {
+    pub(crate) fn push_T_to_time_wheel(&self, task: Task, milliseconds: i64) {
         if milliseconds > 1000 {
             let seconds = (milliseconds.abs() / 1000) as u64;
-            // println!("push-seconds:{}", seconds);
             if seconds > 60 * 60 {
                 // 小时级
                 self.push_T_to_hour_time_wheel(task, seconds);
@@ -77,7 +70,7 @@ where
         }
     }
 
-    fn push_T_to_millisecond_time_wheel(&self, task: T, milliseconds: u64) {
+    fn push_T_to_millisecond_time_wheel(&self, task: Task, milliseconds: u64) {
         if let Ok(_mutex) = self.mutex.lock() {
             if let Some(millisecond_time_wheel) = unsafe { self.millisecond_time_wheel.as_mut() } {
                 let mut target_pointer =
@@ -88,7 +81,7 @@ where
         }
     }
 
-    fn push_T_to_second_time_wheel(&self, task: T, seconds: u64) {
+    fn push_T_to_second_time_wheel(&self, task: Task, seconds: u64) {
         if let Ok(_mutex) = self.mutex.lock() {
             if let Some(second_time_wheel) = unsafe { self.second_time_wheel.as_mut() } {
                 let mut target_pointer = second_time_wheel.pointer + seconds as usize;
@@ -98,7 +91,7 @@ where
         }
     }
 
-    fn push_T_to_minute_time_wheel(&self, task: T, seconds: u64) {
+    fn push_T_to_minute_time_wheel(&self, task: Task, seconds: u64) {
         if let Ok(_mutex) = self.mutex.lock() {
             if let Some(minute_time_wheel) = unsafe { self.minute_time_wheel.as_mut() } {
                 let mut target_pointer = minute_time_wheel.pointer + seconds as usize / 60;
@@ -108,12 +101,12 @@ where
         }
     }
 
-    fn push_T_to_hour_time_wheel(&self, task: T, seconds: u64) {
+    fn push_T_to_hour_time_wheel(&self, task: Task, seconds: u64) {
         if let Ok(_mutex) = self.mutex.lock() {
             if let Some(hour_time_wheel) = unsafe { self.hour_time_wheel.as_mut() } {
                 let mut target_pointer = hour_time_wheel.pointer + seconds as usize / 60 / 60;
-                if target_pointer >= hour_time_wheel.slot.len(){
-                    target_pointer = hour_time_wheel.slot.len()-1;
+                if target_pointer >= hour_time_wheel.slot.len() {
+                    target_pointer = hour_time_wheel.slot.len() - 1;
                 } else {
                     target_pointer = target_pointer % hour_time_wheel.slot.len();
                 }
@@ -135,46 +128,63 @@ where
         let mut return_result = vec![];
 
         if millisecond_time_wheel.interval_finished() {
-            self.check_time_wheel_result(millisecond_time_wheel.check(), &mut return_result);
+            self.check_time_wheel_result(millisecond_time_wheel.check(), &mut return_result)
+                .await;
         }
         if second_time_wheel.interval_finished() {
-            self.check_time_wheel_result(second_time_wheel.check(), &mut return_result);
+            self.check_time_wheel_result(second_time_wheel.check(), &mut return_result)
+                .await;
         }
         if minute_time_wheel.interval_finished() {
-            self.check_time_wheel_result(minute_time_wheel.check(), &mut return_result);
+            self.check_time_wheel_result(minute_time_wheel.check(), &mut return_result)
+                .await;
         }
         if hour_time_wheel.interval_finished() {
-            self.check_time_wheel_result(hour_time_wheel.check(), &mut return_result);
+            self.check_time_wheel_result(hour_time_wheel.check(), &mut return_result)
+                .await;
         }
 
         return_result
     }
 
-    pub(crate) fn check_time_wheel_result(
+    pub(crate) async fn check_time_wheel_result(
         &self,
-        mut time_wheel_result: Vec<T>,
+        mut time_wheel_result: Vec<Task>,
         return_result: &mut Vec<Arc<Box<dyn ITaskHandler>>>,
     ) {
         let now_time = Local::now();
         loop {
             if let Some(mut t) = time_wheel_result.pop() {
-                let milliseconds = t
-                    .get_target_date_time()
-                    .signed_duration_since(now_time)
-                    .num_milliseconds();
-                if milliseconds <= 100 {
-                    return_result.push(t.get_handle());
-                    if t.tick_repeat_model() {
-                        if let Some(next_time) = t.get_next_datetime() {
-                            let time_delta = next_time.signed_duration_since(now_time);
-                            let milliseconds = time_delta.num_milliseconds();
-                            t.set_target_date_time(next_time);
-                            self.push_T_to_time_wheel(t, milliseconds);
+                if let Some(target_datetime) = t.get_target_date_time().await {
+                    let milliseconds = target_datetime
+                        .signed_duration_since(now_time)
+                        .num_milliseconds();
+                    if milliseconds <= 100 {
+                        match t.get_task_order_type() {
+                            super::task_actor::TaskOrderType::Order => {
+                                let _ =
+                                    t.get_task_signal_sender().send(TaskSignal::RunHandle).await;
+                            }
+                            super::task_actor::TaskOrderType::Disorder => {
+                                if let Some(handle) = t.get_handle().await {
+                                    return_result.push(handle);
+                                }
+                            }
                         }
+                        if let Some(result) = t.tick_repeat_model().await {
+                            if result {
+                                if let Some(next_time) = t.get_next_datetime().await {
+                                    let time_delta = next_time.signed_duration_since(now_time);
+                                    let milliseconds = time_delta.num_milliseconds();
+                                    t.set_target_date_time(next_time);
+                                    self.push_T_to_time_wheel(t, milliseconds);
+                                }
+                            }
+                        }
+                    } else {
+                        // 降级
+                        self.push_T_to_time_wheel(t, milliseconds);
                     }
-                } else {
-                    // 降级
-                    self.push_T_to_time_wheel(t, milliseconds);
                 }
             } else {
                 break;
@@ -184,27 +194,21 @@ where
 }
 
 /// ## 时间轮
-pub(crate) struct TimeWheel<T>
-where
-    T: TaskPollTrait + 'static,
-{
-    slot: Vec<VecDeque<T>>,
+pub(crate) struct TimeWheel {
+    slot: Vec<VecDeque<Task>>,
     pointer: usize,
     interval: u64,
     interval_setting: u64,
 }
 
-unsafe impl<T> Send for TimeWheel<T> where T: TaskPollTrait + 'static {}
-unsafe impl<T> Sync for TimeWheel<T> where T: TaskPollTrait + 'static {}
+unsafe impl Send for TimeWheel {}
+unsafe impl Sync for TimeWheel {}
 
-impl<T> TimeWheel<T>
-where
-    T: TaskPollTrait + 'static,
-{
+impl TimeWheel {
     pub(crate) fn new(slot_len: usize, interval: u64) -> Self {
         let mut slot = Vec::with_capacity(slot_len);
         for _ in 0..slot_len {
-            slot.push(VecDeque::<T>::new());
+            slot.push(VecDeque::new());
         }
         Self {
             slot,
@@ -227,7 +231,7 @@ where
         }
     }
 
-    pub(crate) fn check(&mut self) -> Vec<T> {
+    pub(crate) fn check(&mut self) -> Vec<Task> {
         let mut tasks_vec = vec![];
         loop {
             if let Some(t) = self.slot[self.pointer].pop_front() {

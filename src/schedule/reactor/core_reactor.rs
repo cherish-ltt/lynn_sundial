@@ -5,9 +5,7 @@ use crossbeam_deque::Injector;
 use tokio::task::JoinHandle;
 
 use crate::schedule::{
-    config::DEFAULT_TICK_TIME,
-    task::{ITaskHandler, TaskPollTrait},
-    time_wheel::TierTimeWheel,
+    config::DEFAULT_TICK_TIME, task_actor::ITaskHandler, time_wheel::TierTimeWheel,
 };
 
 pub(super) struct CoreReactor {
@@ -21,13 +19,11 @@ impl CoreReactor {
         }
     }
 
-    pub(crate) fn start<T>(
+    pub(crate) fn start(
         &mut self,
-        time_wheel: Arc<TierTimeWheel<T>>,
+        time_wheel: Arc<TierTimeWheel>,
         global_queue: Arc<Injector<Arc<Box<dyn ITaskHandler>>>>,
-    ) where
-        T: TaskPollTrait + 'static,
-    {
+    ) {
         let core_join_handle = tokio::spawn(async move {
             let time_wheel = time_wheel;
             let mut tick_detal = DEFAULT_TICK_TIME;
