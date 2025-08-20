@@ -1,10 +1,7 @@
-use std::
-    sync::Arc
-;
+use std::sync::Arc;
 
 use crate::schedule::{
     reactor::{core_reactor::CoreReactor, task_reactor::TasksManager},
-    task::TaskPollTrait,
     time_wheel::TierTimeWheel,
 };
 
@@ -34,10 +31,7 @@ impl TaskReactor {
         }
     }
 
-    pub(crate) fn start<T>(&mut self, time_wheel: Arc<TierTimeWheel<T>>)
-    where
-        T: TaskPollTrait + 'static,
-    {
+    pub(crate) fn start(&mut self, time_wheel: Arc<TierTimeWheel>) {
         self.task_manager.start();
         self.core_reactor
             .start(time_wheel, self.task_manager.get_global_queue());
