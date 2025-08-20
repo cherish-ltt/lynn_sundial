@@ -11,7 +11,7 @@ use crate::schedule::{
         DEFAULT_HOUR_TIME_WHEEL_SETTING, DEFAULT_MILLISECOND_TIME_WHEEL_SETTING,
         DEFAULT_MINUTE_TIME_WHEEL_SETTING, DEFAULT_SECOND_TIME_WHEEL_SETTING,
     },
-    task::{ITaskHandler, TaskPollTrait},
+    task_actor::{ITaskHandler, TaskPollTrait},
 };
 
 /// ## 多层时间轮
@@ -112,7 +112,11 @@ where
         if let Ok(_mutex) = self.mutex.lock() {
             if let Some(hour_time_wheel) = unsafe { self.hour_time_wheel.as_mut() } {
                 let mut target_pointer = hour_time_wheel.pointer + seconds as usize / 60 / 60;
-                target_pointer = target_pointer % hour_time_wheel.slot.len();
+                if target_pointer >= hour_time_wheel.slot.len(){
+                    target_pointer = hour_time_wheel.slot.len()-1;
+                } else {
+                    target_pointer = target_pointer % hour_time_wheel.slot.len();
+                }
                 let _ = &hour_time_wheel.slot[target_pointer as usize].push_back(task);
             }
         }
