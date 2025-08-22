@@ -1,5 +1,19 @@
 # Version Note
 
+### v0.1.x
+
+#### v0.2.0 - plan
+
+1.移动TaskActor部分字段位置，减少不必要的线程间通信
+
+#### v0.1.0
+
+1.整合v0.0.x-rc的全部代码
+
+2.feat
+
+- 现在新增task会返回一个当前Scheduler内部唯一用来标记定时任务的id(usize)值，可以根据id值来针对一个task进行停止/销毁/再次启动/修改cron等操作
+
 ### v0.0.x - rc
 
 #### v0.0.1 - rc.3

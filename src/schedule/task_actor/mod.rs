@@ -1,9 +1,10 @@
 use std::{pin::Pin, sync::Arc};
 
+use crate::schedule::{RepeatModel, config::DEFAULT_CHANNEL_SIZE};
 use chrono::{DateTime, Local};
+use cron::Schedule;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
-use crate::schedule::{RepeatModel, config::DEFAULT_CHANNEL_SIZE};
 pub(crate) trait TaskPollTrait {
     async fn get_target_date_time(&mut self) -> Option<DateTime<Local>>;
     fn get_task_order_type(&mut self) -> TaskOrderType;
@@ -22,6 +23,7 @@ pub(crate) trait TaskActorTrait {
 }
 
 /// 任务信号
+#[derive(Clone)]
 pub(crate) enum TaskSignal {
     /// 获取handle
     GetHandle(Sender<Arc<Box<dyn ITaskHandler>>>),
@@ -37,6 +39,10 @@ pub(crate) enum TaskSignal {
     GetTargetDateTime(Sender<DateTime<Local>>),
     /// 销毁
     Destory,
+    /// 暂停
+    Pause(Sender<TaskActor>),
+    /// 更新cron
+    UpdateCron(Schedule),
 }
 
 pub(crate) enum TaskOrderType {
@@ -46,9 +52,21 @@ pub(crate) enum TaskOrderType {
     Disorder,
 }
 
+#[derive(Clone)]
+pub(crate) enum TaskStatus {
+    /// 暂停,挂起
+    Pause,
+    /// 销毁
+    Destory,
+    /// 运行中
+    Running,
+}
+
 pub(crate) struct Task {
     task_signal_sender: Sender<TaskSignal>,
     task_order_type: TaskOrderType,
+    task_status: TaskStatus,
+    task_id: usize,
 }
 
 unsafe impl Send for Task {}
@@ -61,6 +79,7 @@ impl Task {
         repeat_model: RepeatModel,
         target_datetime: DateTime<Local>,
         task_order_type: TaskOrderType,
+        task_id: usize,
     ) -> Self {
         Self {
             task_signal_sender: TaskActor::new(
@@ -70,7 +89,29 @@ impl Task {
                 target_datetime,
             ),
             task_order_type,
+            task_status: TaskStatus::Running,
+            task_id,
         }
+    }
+
+    pub(crate) fn is_running(&self) -> bool {
+        match self.task_status {
+            TaskStatus::Pause => false,
+            TaskStatus::Destory => false,
+            TaskStatus::Running => true,
+        }
+    }
+
+    pub(crate) fn set_status(&mut self, status: TaskStatus) {
+        self.task_status = status;
+    }
+
+    pub(crate) fn get_id(&self) -> usize {
+        self.task_id
+    }
+
+    pub(crate) fn get_sender(&self) -> Sender<TaskSignal> {
+        self.task_signal_sender.clone()
     }
 }
 
@@ -147,7 +188,7 @@ impl TaskPollTrait for Task {
 }
 
 /// ## 任务actor
-struct TaskActor {
+pub(crate) struct TaskActor {
     cron_schedule: cron::Schedule,
     handle: Arc<Box<dyn ITaskHandler>>,
     repeat_model: RepeatModel,
@@ -163,14 +204,20 @@ impl TaskActor {
         target_datetime: DateTime<Local>,
     ) -> Sender<TaskSignal> {
         let (tx, rx) = channel::<TaskSignal>(DEFAULT_CHANNEL_SIZE);
+        let task_actor = Self {
+            cron_schedule,
+            handle,
+            repeat_model,
+            target_datetime,
+            receiver: rx,
+        };
+        task_actor.start_actor();
+        tx
+    }
+
+    pub(crate) fn start_actor(self) {
+        let mut task_actor = self;
         tokio::spawn(async move {
-            let mut task_actor = Self {
-                cron_schedule,
-                handle,
-                repeat_model,
-                target_datetime,
-                receiver: rx,
-            };
             loop {
                 if let Some(task_signal) = task_actor.get_signal().await {
                     match task_signal {
@@ -193,11 +240,21 @@ impl TaskActor {
                             let _ = sender.send(task_actor.get_target_date_time()).await;
                         }
                         TaskSignal::Destory => break,
+                        TaskSignal::Pause(sender) => {
+                            sender.send(task_actor).await;
+                            break;
+                        }
+                        TaskSignal::UpdateCron(schedule) => {
+                            task_actor.cron_schedule = schedule;
+                            if let Some(datetime) = task_actor.cron_schedule.upcoming(Local).next()
+                            {
+                                task_actor.target_datetime = datetime;
+                            }
+                        }
                     }
                 }
             }
         });
-        tx
     }
 
     async fn get_signal(&mut self) -> Option<TaskSignal> {
