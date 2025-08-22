@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
+use tokio::sync::RwLock;
+
 use crate::schedule::{
     reactor::{core_reactor::CoreReactor, task_reactor::TasksManager},
+    task_actor::TaskStatus,
     time_wheel::TierTimeWheel,
 };
 
@@ -31,9 +34,16 @@ impl TaskReactor {
         }
     }
 
-    pub(crate) fn start(&mut self, time_wheel: Arc<TierTimeWheel>) {
+    pub(crate) fn start(
+        &mut self,
+        time_wheel: Arc<TierTimeWheel>,
+        notice_list: Arc<RwLock<Option<Vec<(usize, TaskStatus)>>>>,
+    ) {
         self.task_manager.start();
-        self.core_reactor
-            .start(time_wheel, self.task_manager.get_global_queue());
+        self.core_reactor.start(
+            time_wheel,
+            self.task_manager.get_global_queue(),
+            notice_list,
+        );
     }
 }

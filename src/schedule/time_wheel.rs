@@ -5,13 +5,14 @@ use std::{
 };
 
 use chrono::Local;
+use tokio::sync::RwLock;
 
 use crate::schedule::{
     config::{
         DEFAULT_HOUR_TIME_WHEEL_SETTING, DEFAULT_MILLISECOND_TIME_WHEEL_SETTING,
         DEFAULT_MINUTE_TIME_WHEEL_SETTING, DEFAULT_SECOND_TIME_WHEEL_SETTING,
     },
-    task_actor::{ITaskHandler, Task, TaskPollTrait, TaskSignal},
+    task_actor::{ITaskHandler, Task, TaskPollTrait, TaskSignal, TaskStatus},
 };
 
 /// ## 多层时间轮
@@ -115,7 +116,11 @@ impl TierTimeWheel {
         }
     }
 
-    pub(crate) async fn tick(&self, detal: u64) -> Vec<Arc<Box<dyn ITaskHandler>>> {
+    pub(crate) async fn tick(
+        &self,
+        detal: u64,
+        notice_list: Arc<RwLock<Option<Vec<(usize, TaskStatus)>>>>,
+    ) -> Vec<Arc<Box<dyn ITaskHandler>>> {
         let millisecond_time_wheel = unsafe { self.millisecond_time_wheel.as_mut().unwrap() };
         let second_time_wheel = unsafe { self.second_time_wheel.as_mut().unwrap() };
         let minute_time_wheel = unsafe { self.minute_time_wheel.as_mut().unwrap() };
@@ -128,20 +133,36 @@ impl TierTimeWheel {
         let mut return_result = vec![];
 
         if millisecond_time_wheel.interval_finished() {
-            self.check_time_wheel_result(millisecond_time_wheel.check(), &mut return_result)
-                .await;
+            self.check_time_wheel_result(
+                millisecond_time_wheel.check(),
+                &mut return_result,
+                notice_list.clone(),
+            )
+            .await;
         }
         if second_time_wheel.interval_finished() {
-            self.check_time_wheel_result(second_time_wheel.check(), &mut return_result)
-                .await;
+            self.check_time_wheel_result(
+                second_time_wheel.check(),
+                &mut return_result,
+                notice_list.clone(),
+            )
+            .await;
         }
         if minute_time_wheel.interval_finished() {
-            self.check_time_wheel_result(minute_time_wheel.check(), &mut return_result)
-                .await;
+            self.check_time_wheel_result(
+                minute_time_wheel.check(),
+                &mut return_result,
+                notice_list.clone(),
+            )
+            .await;
         }
         if hour_time_wheel.interval_finished() {
-            self.check_time_wheel_result(hour_time_wheel.check(), &mut return_result)
-                .await;
+            self.check_time_wheel_result(
+                hour_time_wheel.check(),
+                &mut return_result,
+                notice_list.clone(),
+            )
+            .await;
         }
 
         return_result
@@ -151,10 +172,33 @@ impl TierTimeWheel {
         &self,
         mut time_wheel_result: Vec<Task>,
         return_result: &mut Vec<Arc<Box<dyn ITaskHandler>>>,
+        notice_list: Arc<RwLock<Option<Vec<(usize, TaskStatus)>>>>,
     ) {
         let now_time = Local::now();
         loop {
             if let Some(mut t) = time_wheel_result.pop() {
+                {
+                    let mut mutex = notice_list.write().await;
+                    if let Some(vec) = mutex.as_mut() {
+                        for index in 0..vec.len() {
+                            let (id, status) = &vec[index];
+                            if *id == t.get_id() {
+                                t.set_status(status.clone());
+                                vec.remove(index);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !t.is_running() {
+                    if let Some(next_time) = t.get_next_datetime().await {
+                        let time_delta = next_time.signed_duration_since(now_time);
+                        let milliseconds = time_delta.num_milliseconds();
+                        t.set_target_date_time(next_time).await;
+                        self.push_T_to_time_wheel(t, milliseconds);
+                    }
+                    continue;
+                }
                 if let Some(target_datetime) = t.get_target_date_time().await {
                     let milliseconds = target_datetime
                         .signed_duration_since(now_time)
@@ -176,7 +220,7 @@ impl TierTimeWheel {
                                 if let Some(next_time) = t.get_next_datetime().await {
                                     let time_delta = next_time.signed_duration_since(now_time);
                                     let milliseconds = time_delta.num_milliseconds();
-                                    t.set_target_date_time(next_time);
+                                    t.set_target_date_time(next_time).await;
                                     self.push_T_to_time_wheel(t, milliseconds);
                                 }
                             }

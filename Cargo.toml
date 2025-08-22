@@ -1,6 +1,6 @@
 [package]
 name = "lynn_sundial"
-version = "0.0.1-rc.3"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 authors = ["lynn_sundial Contributors"]
