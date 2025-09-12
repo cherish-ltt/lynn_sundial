@@ -118,17 +118,17 @@ impl TierTimeWheel {
 
     pub(crate) async fn tick(
         &self,
-        detal: u64,
+        delta: u64,
         notice_list: Arc<RwLock<Option<Vec<(usize, TaskStatus)>>>>,
     ) -> Vec<Arc<Box<dyn ITaskHandler>>> {
         let millisecond_time_wheel = unsafe { self.millisecond_time_wheel.as_mut().unwrap() };
         let second_time_wheel = unsafe { self.second_time_wheel.as_mut().unwrap() };
         let minute_time_wheel = unsafe { self.minute_time_wheel.as_mut().unwrap() };
         let hour_time_wheel = unsafe { self.hour_time_wheel.as_mut().unwrap() };
-        millisecond_time_wheel.tick(detal);
-        second_time_wheel.tick(detal);
-        minute_time_wheel.tick(detal);
-        hour_time_wheel.tick(detal);
+        millisecond_time_wheel.tick(delta);
+        second_time_wheel.tick(delta);
+        minute_time_wheel.tick(delta);
+        hour_time_wheel.tick(delta);
 
         let mut return_result = vec![];
 
@@ -262,8 +262,8 @@ impl TimeWheel {
         }
     }
 
-    pub(crate) fn tick(&mut self, detal: u64) {
-        self.interval = self.interval.saturating_sub(detal);
+    pub(crate) fn tick(&mut self, delta: u64) {
+        self.interval = self.interval.saturating_sub(delta);
     }
 
     pub(crate) fn interval_finished(&mut self) -> bool {
