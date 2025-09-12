@@ -3,7 +3,9 @@ use std::{sync::Arc, time::Duration};
 use crossbeam_deque::{Injector, Steal, Stealer, Worker};
 
 use crate::schedule::{
-    config::{DEFAULT_TASK_POOL_SIZE, DEFAULT_TICK_TIME},
+    config::{
+        DEFAULT_STEALER_INTERVAL_TIME, DEFAULT_TASK_POOL_SIZE, DEFAULT_TICK_TIME, MAX_BACKOFF,
+    },
     task_actor::ITaskHandler,
 };
 
@@ -40,11 +42,19 @@ impl TasksManager {
             let global_queue = global_queue.clone();
             let stealers_arc = stealers_arc.clone();
             tokio::spawn(async move {
+                let mut failed_steal_attempts = 0;
                 loop {
                     if let Some(task) = get_task(&local_queue, &global_queue, &stealers_arc) {
                         task.run().await;
                     } else {
-                        tokio::time::sleep(Duration::from_millis(DEFAULT_TICK_TIME)).await;
+                        if failed_steal_attempts < MAX_BACKOFF {
+                            failed_steal_attempts += 1;
+                        }
+                        let sleep_duration = Duration::from_millis(
+                            DEFAULT_STEALER_INTERVAL_TIME * (1 << failed_steal_attempts),
+                        )
+                        .min(Duration::from_millis(100));
+                        tokio::time::sleep(sleep_duration).await;
                     }
                 }
             });

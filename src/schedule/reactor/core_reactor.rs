@@ -29,16 +29,16 @@ impl CoreReactor {
     ) {
         let core_join_handle = tokio::spawn(async move {
             let time_wheel = time_wheel;
-            let mut tick_detal = DEFAULT_TICK_TIME;
+            let mut tick_delta = DEFAULT_TICK_TIME;
             loop {
                 let start_time = Local::now();
                 sleep(Duration::from_millis(DEFAULT_TICK_TIME));
-                let handle_vec = time_wheel.tick(tick_detal, notice_list.clone()).await;
+                let handle_vec = time_wheel.tick(tick_delta, notice_list.clone()).await;
                 for handle in handle_vec {
                     global_queue.push(handle);
                 }
                 let end_time = Local::now();
-                tick_detal = end_time
+                tick_delta = end_time
                     .signed_duration_since(start_time)
                     .num_milliseconds() as u64;
             }
